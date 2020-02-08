@@ -9,4 +9,5 @@ You will need to edit iFunnyClient.py:
 libs.iFunny.py is the main part of the bot.
 libs.commands.py is where you can put your commands. (I have a really good setup for commands in there)
 
-The rest is for you to figure out
+The rest is for you to figure out but I will give you this:
+https://docs.sendbird.com/platform
