@@ -220,7 +220,7 @@ class Channel:
 class List:
 	
 	def __init__(self, items=[]):
-		self.items = items
+		self.items = list(items)
 		
 	def __iter__(self):
 		return self.items
