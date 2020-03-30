@@ -12,71 +12,26 @@ class Images:
 
 		assert size.lower() in ("l", "m", "s", ""), "Size must be L, M, S, or empty string"
 
-		url = f"https://www.google.com/search?q={urllib.parse.quote(query)}&safe=active&tbm=isch&tbs=isz%3A{size.lower()}"
+		params = {"q":query,
+				  "tbm":"isch",
+				  "ijn":0,
+				  "start":0,
+				  "asearch":"ichunk",
+				  "async":"_id:rg_s,_pms:s,_fmt:pc",
+				  "safe":"active",
+				  "tbs":"isz%3A"+size.lower()}
 
-		images = []
-		html = ""
-
-		try:
-
-			html = requests.get(url, headers=header).text
-			soup = BeautifulSoup(html, 'html.parser')
-
-			if "did not match any image results" not in html:
-
-				for item in soup.find_all("div", {"class": "rg_meta"}):
-
-					data = json.loads(item.text)
-
-					url = data.get("ou")
-					image_type = data.get("ity")
-
-					if image_type:
-
-						mime = "image/"+image_type
-						width = data.get("ow")
-						height = data.get("oh")
-
-						images.append((url, None, width, height))
-
-				if not images:
-
-						data = soup.find("div", {"class": "gb_Kd"})
-
-						if not data:
-							data = soup.find("div", {"class": "gb_Ld"})
-
-						if data:
-
-							data = data.parent.parent.find_all("script")
-
-							if len(data) >= 2:
-
-								data = data[-2].text
-								data = data[data.find("return")+7:-4]
-								data = json.loads(data)
-								data = data[-10][0][12][2]
-
-								for i in data:
-									if isinstance(i, list) and i[0]:
-										for subset in i:
-											if isinstance(subset, list):
-												if subset[0] == 0:
-													url, height, width = subset[3]
-													package = (url, None, width, height)
-													images.append(package)
-
-
-		except:
-			pass
-
-		if not images:
-
-			print("No images found. error?")
-			with open(f"errors/{query}", "w") as f:
-				f.write(html)
+		url = f"https://www.google.com/search"
+		
+		soup = BeautifulSoup(requests.get(url, params=params, headers=header, timeout=5).text, "html.parser")
+		data = soup.find_all("div", {"class": "rg_meta notranslate"})
+		images = [json.loads(i.text) for i in data]
+		images = [{"image":{"mime":"image/"+i["ity"],"width":i["ow"],"height":i["oh"],
+				  "url":i["ou"]},"thumb":{"mime":"image/"+i["ity"],"width":i["tw"],
+				  "height":i["th"],"url":i["tu"]}} for i in images if not i["ou"].startswith("x-raw-image")]
 
 		return images
+	
 	
 	
 class Summary:
@@ -90,53 +45,115 @@ class Summary:
 		soup = BeautifulSoup(html, "html.parser")
 
 		data = {}
-			
-		title = soup.find("div", {"data-attrid": "title"})
 		
-		if not title: return
+		snippet = soup.find("div", {"class": "hntNk vk_c vk_bk"})
+		snippet2 = soup.find("div", {"class": "ifM9O"})
+		snippet3 = soup.find("div", {"class": "vk_c vk_gy vk_sh card-section sL6Rbf"})
 		
-		title = title.text
-		subtitle = soup.find("div", {"data-attrid": "subtitle"})
-		
-		data["title"] = title
-		
-		if subtitle:
-			data["subtitle"] = subtitle.text
-		
-		description = soup.find("div",{"data-attrid":"description"})
-		
-		if description and description.find("span"):
-			data["description"] = description.find("span").text
-		
-		else: return None
-			
-		data["facts"] = {}
-		
-		for mod in soup.find_all("div", {"data-md": "1001"}):
+		if snippet:
 
-			fact_title = mod.find("span",{"class":"w8qArf"})
-			
-			if not fact_title: continue
+			title = snippet.find("div", {"class": "vk_gy vk_sh"})
+
+			if title:
+
+				data["title"] = title.text
+				data["description"] = snippet.find("div", {"class": "dDoNo vk_bk"}).text
 				
-			fact_title = fact_title.text.strip(": ")
-			
-			facts = []
+				
+		elif snippet3:
 
-			fact_data = mod.find("span",{"class":"LrzXr kno-fv"})
-			fact_data_list = fact_data.find_all("a")
+			title = snippet3.find("div", {"class": "vk_bk dDoNo"})
+			title2 = snippet3.find("div", {"class": "gsrt vk_bk dDoNo"})
 			
-			if fact_data_list:
-				for item in fact_data_list:
-					facts.append(item.text)
+			if title:
+				data["title"] = title.text.strip()
+				
+			elif title2:
+				data["title"] = title2.text.strip()
+			
+			data["description"] = snippet3.find(class_="vk_gy vk_sh").text.strip()
+
+				
+		
+		elif snippet2:
+			
+			title = snippet2.find("div", {"class": "N6Sb2c i29hTd"})
+			title2 = snippet2.find("div", {"class": "Z0LcW AZCkJd"})
+			description = snippet2.find("div", {"class": "Z0LcW"})
+			description2 = snippet2.find("span", {"class": "e24Kjd"})
+			has_regular_description = False
+
+			if title or description or description2:
+				
+				if title:
+					data["title"] = title.text
+
+				if description:
+					data["description"] = description.text
+					has_regular_description = True
+
+				if description2:
+					if has_regular_description:
+						data["description"] += "\n\n"+description2.text
+					else:
+						data["description"] = description2.text
+				
+			elif title2:
+
+				data["title"] = title2.text
+				data["description"] = snippet2.find("span", {"class": "e24Kjd"}).text
+
+					
 			else:
-				facts.append(fact_data.text)
-				
-			fact_data = ", ".join(facts)
-		
-			data["facts"][fact_title] = fact_data
-			
+
+				title = soup.find("div", {"data-attrid": "title"})
+
+				if title:
+
+					data["title"] = title.text
+					subtitle = soup.find("div", {"data-attrid": "subtitle"})
+
+					if subtitle:
+						data["subtitle"] = subtitle.text
+
+					description = soup.find("div",{"data-attrid":"description"})
+
+					if description and description.find("span"):
+						data["description"] = description.find("span").text
+
+
+					data["facts"] = {}
+
+					for mod in soup.find_all("div", {"data-md": "1001"}):
+
+						fact_title = mod.find("span",{"class":"w8qArf"})
+
+						if not fact_title: continue
+
+						fact_title = fact_title.text.strip(": ")
+
+						facts = []
+
+						fact_data = mod.find("span",{"class":"LrzXr kno-fv"})
+						
+						if fact_data:
+							
+							fact_data_list = fact_data.find_all("a")
+
+							if fact_data_list:
+								for item in fact_data_list:
+									facts.append(item.text)
+							else:
+								facts.append(fact_data.text)
+
+							fact_data = ", ".join(facts)
+
+							data["facts"][fact_title] = fact_data
+
 		return data
 	
+
+#print(Summary.search("what time is it"))
 			
 
 class Translate:
@@ -883,7 +900,7 @@ class Translate:
 				return search
 
 			for code, names in self.iso_langs.items():
-				name_options = [i.strip() for v in names.values() for i in v.lower().split(",")]
+				name_options = [i.strip() for v in names.values() for i in v.lower().replace(";","").split(",")]
 				if search in name_options:
 					return code
 
